@@ -1,0 +1,32 @@
+# Example compose deployment.
+#
+#   1. cp gateway.example.yaml gateway.yaml   (and edit it)
+#   2. export DEEPSEEK_API_KEY=sk-...
+#   3. docker compose up -d
+#
+# Then open http://localhost:8080/ for the live dashboard, and point any
+# workbench at http://localhost:8080/v1 with a client key from the config.
+services:
+  gateway:
+    build: .
+    image: llmgateway:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the config read-only: the container never needs to write it.
+      - ./gateway.yaml:/etc/llmgateway/gateway.yaml:ro
+    environment:
+      # Secrets come from the host environment, never from the image or the
+      # mounted config file.
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?set DEEPSEEK_API_KEY before starting}
+      # Optional: override anything in the config without rebuilding.
+      # LLM_GATEWAY_LISTEN: ":8080"
+      # LLM_GATEWAY_CORS_ORIGINS: "https://bench.example"
+    healthcheck:
+      # The dashboard answers on /, so it doubles as a liveness probe.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

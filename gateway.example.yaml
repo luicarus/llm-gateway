@@ -1,0 +1,53 @@
+# LLM Gateway configuration.
+#
+# Copy to gateway.yaml and edit. Every secret can be supplied through an
+# environment variable instead of inline (see api_key_env / key_env), so this
+# file can be committed or shared without leaking credentials.
+
+listen: ":8080"
+
+# Which upstream to use when a client key does not pin one.
+# Defaults to the first upstream listed.
+default_upstream: deepseek
+
+# Upstreams are the real LLM providers. The gateway presents api_key to them;
+# workbenches never see these keys.
+upstreams:
+  - name: deepseek
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+
+  # Add more providers the same way. Each gets its own line on the dashboard.
+  # - name: openai
+  #   base_url: https://api.openai.com
+  #   api_key_env: OPENAI_API_KEY
+  #
+  # - name: moonshot
+  #   base_url: https://api.moonshot.cn
+  #   api_key_env: MOONSHOT_API_KEY
+  #
+  # - name: local-vllm        # a local upstream needs no key; set NO_PROXY too
+  #   base_url: http://127.0.0.1:8000
+
+# Client keys authorise workbenches. Each key resolves to a named caller, which
+# is how the dashboard attributes spend.
+#
+# Leaving this list empty runs the gateway OPEN — intended only for local
+# development or a trusted network. Set keys before exposing the gateway.
+client_keys:
+  - name: my-workbench
+    key: gw-change-me          # or: key_env: MY_WORKBENCH_KEY
+    # upstream: deepseek       # optional: pin this key to one upstream
+
+# CORS lets a browser-based workbench call the gateway directly from another
+# origin. Required only for in-browser callers; server-side workbenches do not
+# need it.
+cors:
+  enabled: true
+  allowed_origins:
+    - "http://localhost:3000"
+    # - "*"                    # allows any origin; the client key is still required
+
+# Optional. Protects the dashboard and /metrics. Access it with
+#   http://localhost:8080/?key=YOUR_DASHBOARD_KEY
+# dashboard_key_env: LLM_GATEWAY_DASHBOARD_KEY

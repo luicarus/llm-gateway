@@ -1,0 +1,39 @@
+# Local configuration may contain real upstream API keys. Only the example
+# template is committed; a deployment's own gateway.yaml must never be.
+gateway.yaml
+gateway.yml
+gateway.json
+*.local.yaml
+*.local.yml
+
+# Secrets in any form.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.yaml
+.credentials.yaml
+
+# Built binaries.
+llmgateway
+llmgateway.exe
+mockupstream
+mockupstream.exe
+ssestream
+ssestream.exe
+verifye2e
+verifye2e.exe
+
+# Local run logs.
+*.log
+*.err
+
+# OS / editor noise.
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

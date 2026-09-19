@@ -1,0 +1,25 @@
+# End-to-end verification config: two upstreams, two client keys, CORS on.
+# Both upstreams point at local mock servers so no real credits are spent.
+listen: "127.0.0.1:8080"
+default_upstream: mockA
+
+upstreams:
+  - name: mockA
+    base_url: http://127.0.0.1:9099
+    api_key: sk-upstream-A-secret
+  - name: mockB
+    base_url: http://127.0.0.1:9098
+    api_key: sk-upstream-B-secret
+
+client_keys:
+  - name: alice
+    key: gw-alice-key
+    upstream: mockA
+  - name: bob
+    key: gw-bob-key
+    upstream: mockB
+
+cors:
+  enabled: true
+  allowed_origins:
+    - "http://localhost:3000"
