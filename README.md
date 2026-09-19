@@ -1,4 +1,4 @@
-# llm-token-gateway
+# llm-gateway
 
 **给 LLM 调用加一层计量表。** 一个轻量的 OpenAI 兼容反向代理：转发请求的同时实时统计 token 用量，并按使用者 / 模型 / 上游拆分展示。
 
