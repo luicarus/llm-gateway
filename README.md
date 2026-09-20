@@ -209,12 +209,13 @@ govulncheck ./...  # 依赖漏洞扫描（当前 0 漏洞）
 
 ### 本地端到端验证
 
-`tools/` 下有三个开发用工具（不属于网关本体）：
+`tools/` 下有四个开发用工具（不属于网关本体）：
 
 ```bash
 go build -o mockupstream.exe ./tools/mockupstream   # 假的 OpenAI 兼容上游，不花额度
 go build -o verifye2e.exe    ./tools/verifye2e      # 校验鉴权 / 路由 / CORS / 统计
 go build -o ssestream.exe    ./tools/ssestream      # 验证 SSE 实时推送
+go build -o seeddemo.exe     ./tools/seeddemo       # 灌入演示流量，填充面板
 
 ./mockupstream.exe -listen 127.0.0.1:9099 -mode ok   # 也支持 -mode nousage / slow
 ./llmgateway.exe -config _e2e.yaml -release
@@ -222,6 +223,15 @@ go build -o ssestream.exe    ./tools/ssestream      # 验证 SSE 实时推送
 ```
 
 `_e2e.yaml` 是两上游 + 两 key 的验证配置，两个上游都指向本地 mock。
+
+想看看面板填满数据的样子（例如截图），用 `demo.yaml` + `seeddemo`：
+
+```bash
+./mockupstream.exe -listen 127.0.0.1:9099 -mode ok
+./mockupstream.exe -listen 127.0.0.1:9098 -mode ok
+./llmgateway.exe -config demo.yaml -release
+./seeddemo.exe          # 三个工作台、两个上游、五种模型的混合流量
+```
 
 ## License
 

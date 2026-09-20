@@ -16,14 +16,20 @@ credentials*.yaml
 .credentials.yaml
 
 # Built binaries.
-llmgateway
-llmgateway.exe
-mockupstream
-mockupstream.exe
-ssestream
-ssestream.exe
-verifye2e
-verifye2e.exe
+#
+# Leading slashes matter: a bare "mockupstream" would also match the
+# tools/mockupstream/ source directory at any depth and silently exclude it
+# from the repository. Anchor every rule to the repository root.
+/llmgateway
+/llmgateway.exe
+/mockupstream
+/mockupstream.exe
+/ssestream
+/ssestream.exe
+/verifye2e
+/verifye2e.exe
+/seeddemo
+/seeddemo.exe
 
 # Local run logs.
 *.log

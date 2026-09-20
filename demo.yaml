@@ -1,0 +1,33 @@
+# Demo configuration: two upstreams and three workbench keys, all pointing at
+# the local mock servers so nothing costs real credits.
+#
+# Pair it with tools/seeddemo to populate the dashboard for a screenshot:
+#   ./mockupstream.exe -listen 127.0.0.1:9099 -mode ok
+#   ./mockupstream.exe -listen 127.0.0.1:9098 -mode ok
+#   ./llmgateway.exe -config demo.yaml -release
+#   ./seeddemo.exe
+listen: "127.0.0.1:8080"
+default_upstream: deepseek
+
+upstreams:
+  - name: deepseek
+    base_url: http://127.0.0.1:9099
+    api_key: sk-demo-upstream-key
+  - name: openai
+    base_url: http://127.0.0.1:9098
+    api_key: sk-demo-upstream-key
+
+client_keys:
+  - name: web-workbench
+    key: gw-demo-web
+    upstream: deepseek
+  - name: cli-agent
+    key: gw-demo-cli
+    upstream: openai
+  - name: ci-pipeline
+    key: gw-demo-ci
+
+cors:
+  enabled: true
+  allowed_origins:
+    - "http://localhost:3000"
