@@ -38,8 +38,16 @@ type Upstream struct {
 	APIKey string `json:"api_key" yaml:"api_key"`
 
 	// APIKeyEnv names an environment variable holding APIKey. Preferred over
-	// inlining the secret, so a config file can be committed safely.
+	// inlining the secret, so a config file can be committed safely. When it is
+	// named but the variable is unset, startup fails: falling back silently
+	// would forward the client's gateway key to the provider.
 	APIKeyEnv string `json:"api_key_env" yaml:"api_key_env"`
+
+	// Transparent makes the gateway forward the client's own Authorization
+	// header instead of substituting a credential of its own. This is an
+	// explicit opt-in for deployments where each caller uses their own provider
+	// key; it is never inferred from a missing APIKey.
+	Transparent bool `json:"transparent" yaml:"transparent"`
 }
 
 // ClientKey is a credential a workbench presents to THIS gateway.
@@ -100,6 +108,12 @@ type resolvedUpstream struct {
 	Name    string
 	BaseURL string
 	APIKey  string
+
+	// Transparent records that this upstream deliberately forwards the
+	// client's own Authorization header instead of substituting its own key.
+	// It is only true when the operator asked for that explicitly, never as a
+	// fallback from a missing credential.
+	Transparent bool
 }
 
 // Settings is the validated, secret-resolved configuration the runtime uses.
@@ -162,10 +176,21 @@ func applyEnvOverrides(cfg *Config) {
 		if name == "" {
 			name = "default"
 		}
+		// The companion key is read here rather than via APIKeyEnv, because the
+		// shorthand is chosen precisely when the operator wants minimal setup.
+		// Resolving it eagerly keeps the "named but unset" guard meaningful for
+		// config files, where a typo really is a mistake.
+		//
+		// With no key given, the shorthand runs transparently: each caller
+		// supplies their own provider credential and the gateway only observes.
+		// The intent is explicit here in code rather than inferred, so it can
+		// never be triggered by a misspelled variable in a config file.
+		key := strings.TrimSpace(os.Getenv("LLM_GATEWAY_UPSTREAM_API_KEY"))
 		cfg.Upstreams = []Upstream{{
-			Name:      name,
-			BaseURL:   v,
-			APIKeyEnv: "LLM_GATEWAY_UPSTREAM_API_KEY",
+			Name:        name,
+			BaseURL:     v,
+			APIKey:      key,
+			Transparent: key == "",
 		}}
 		cfg.DefaultUpstream = name
 	}
@@ -216,10 +241,37 @@ func resolve(cfg *Config) (*Settings, error) {
 		}
 
 		key := strings.TrimSpace(u.APIKey)
-		if key == "" && u.APIKeyEnv != "" {
+		transparent := false
+		switch {
+		case key != "":
+			// Inline key: use it.
+		case u.APIKeyEnv != "":
+			// A named environment variable that is unset is a deployment
+			// mistake, and silently falling back to transparent mode would be
+			// dangerous: the gateway would forward the client's own gateway key
+			// to the provider, leaking fleet credentials to a third party and
+			// producing a confusing 401 that looks like a bad provider key.
 			key = strings.TrimSpace(os.Getenv(u.APIKeyEnv))
+			if key == "" {
+				return nil, fmt.Errorf(
+					"upstream %q: api_key_env names %q but that environment variable is empty; "+
+						"set it before starting the gateway (or use api_key to inline a key, "+
+						"or transparent: true to deliberately forward the client's own credential)",
+					name, u.APIKeyEnv)
+			}
+		case u.Transparent:
+			transparent = true
+		default:
+			// No credential at all and no explicit intent: the upstream almost
+			// certainly needs one, so refuse rather than guess.
+			return nil, fmt.Errorf(
+				"upstream %q: no credential configured; set api_key or api_key_env, "+
+					"or transparent: true if this upstream should receive the client's own credential",
+				name)
 		}
-		s.Upstreams = append(s.Upstreams, resolvedUpstream{Name: name, BaseURL: base, APIKey: key})
+		s.Upstreams = append(s.Upstreams, resolvedUpstream{
+			Name: name, BaseURL: base, APIKey: key, Transparent: transparent,
+		})
 	}
 
 	if s.DefaultUpstream == "" {

@@ -78,7 +78,9 @@ func main() {
 	// Convert the resolved configuration into router inputs.
 	ups := make([]router.Upstream, 0, len(cfg.Upstreams))
 	for _, u := range cfg.Upstreams {
-		ups = append(ups, router.Upstream{Name: u.Name, BaseURL: u.BaseURL, APIKey: u.APIKey})
+		ups = append(ups, router.Upstream{
+			Name: u.Name, BaseURL: u.BaseURL, APIKey: u.APIKey, Transparent: u.Transparent,
+		})
 	}
 	clients := make([]router.Client, 0, len(cfg.ClientKeys))
 	for _, k := range cfg.ClientKeys {

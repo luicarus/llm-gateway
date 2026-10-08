@@ -154,13 +154,18 @@ func (h *Handler) forward(c *gin.Context, start time.Time, up router.Upstream,
 	outReq.Header.Set("Content-Length", itoa(len(body)))
 	outReq.Host = ""
 
-	// In managed mode the gateway replaces the client's credential with the
-	// upstream's own. The gateway key is never forwarded: it is meaningless
-	// upstream and would leak the fleet's key material into provider logs.
-	if up.APIKey != "" {
+	// Managed mode (the default) replaces the client's credential with the
+	// upstream's own: the gateway key is meaningless to the provider and would
+	// leak the fleet's key material into provider logs, so it must never be
+	// forwarded. Transparent mode is the explicit opt-out, for deployments
+	// where each caller brings their own provider key.
+	if up.Transparent {
+		// Forward the client's Authorization unchanged.
+		outReq.Header.Del("X-Api-Key")
+	} else {
 		outReq.Header.Set("Authorization", "Bearer "+up.APIKey)
+		outReq.Header.Del("X-Api-Key")
 	}
-	outReq.Header.Del("X-Api-Key")
 
 	resp, err := h.client.Do(outReq)
 	if err != nil {

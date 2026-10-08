@@ -12,6 +12,15 @@ default_upstream: deepseek
 
 # Upstreams are the real LLM providers. The gateway presents api_key to them;
 # workbenches never see these keys.
+#
+# Each upstream needs exactly one credential mode:
+#   api_key      - inline key (simple, but do not commit it)
+#   api_key_env  - name of an environment variable holding the key (recommended)
+#   transparent  - forward the caller's own Authorization header instead
+#
+# If api_key_env names a variable that is unset, startup FAILS. That is
+# deliberate: silently falling back would forward the caller's gateway key to
+# the provider, leaking credentials and producing a confusing 401.
 upstreams:
   - name: deepseek
     base_url: https://api.deepseek.com
@@ -26,8 +35,11 @@ upstreams:
   #   base_url: https://api.moonshot.cn
   #   api_key_env: MOONSHOT_API_KEY
   #
-  # - name: local-vllm        # a local upstream needs no key; set NO_PROXY too
+  # A local upstream that needs no credential. Use transparent when each
+  # caller brings its own key, or omit it if the local server ignores auth.
+  # - name: local-vllm
   #   base_url: http://127.0.0.1:8000
+  #   transparent: true
 
 # Client keys authorise workbenches. Each key resolves to a named caller, which
 # is how the dashboard attributes spend.

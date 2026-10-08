@@ -33,27 +33,87 @@
 
 ## 快速开始
 
-### Docker Compose（推荐）
+最常见的用法：**你有一个上游模型的 API key，想让网关转发并统计**。
+
+### 第一步：准备上游密钥
+
+网关需要上游的真实密钥。推荐放进**环境变量**（不要写进配置文件）：
 
 ```bash
-cp gateway.example.yaml gateway.yaml    # 编辑上游和客户端 key
-export DEEPSEEK_API_KEY=sk-...          # 上游密钥走环境变量
+# Linux / macOS
+export DEEPSEEK_API_KEY=sk-你的真实密钥
+
+# Windows PowerShell
+$env:DEEPSEEK_API_KEY="sk-你的真实密钥"
+```
+
+### 第二步：写配置
+
+```bash
+cp gateway.example.yaml gateway.yaml
+```
+
+编辑 `upstreams` 段，改两处即可：
+
+```yaml
+upstreams:
+  - name: deepseek                          # 面板上显示的名字，随便取
+    base_url: https://api.deepseek.com      # 改成你的上游地址
+    api_key_env: DEEPSEEK_API_KEY           # 指向第一步设的变量名
+```
+
+带 `#` 的注释里已经写好了 OpenAI、Moonshot、本地 vLLM 的模板，取消注释即可。
+
+### 第三步：给调用方发一个 key
+
+在 `client_keys` 里定义谁可以用这个网关：
+
+```yaml
+client_keys:
+  - name: my-workbench      # 面板上显示的「使用者」
+    key: gw-换成你自己的随机串
+```
+
+这个 key 是**你自己造的**（不是上游的），调用方拿它来访问网关。
+
+### 第四步：启动
+
+```bash
+./llmgateway -config gateway.yaml
+```
+
+看到 `client keys: 1 configured` 就成功了。打开 http://localhost:8080/ 看面板。
+
+### Docker Compose
+
+```bash
+cp gateway.example.yaml gateway.yaml
+export DEEPSEEK_API_KEY=sk-...
 docker compose up -d
 ```
 
-打开 http://localhost:8080/ 看面板。
+### 最简跑法（单上游、不鉴权）
 
-### 直接跑二进制
+只想快速试一下、且只在本机用：
 
 ```bash
 go build -o llmgateway .
-
-# 最简：单上游、不鉴权（仅限本机 / 受信网络）
 ./llmgateway -upstream https://api.deepseek.com -listen :8080
-
-# 正式：多上游、按 key 鉴权
-./llmgateway -config gateway.yaml
 ```
+
+这种模式下**没有 `client_keys`**，网关来者不拒，且调用方需要自己在 `Authorization` 里带上游密钥（网关只观察、不替换）。**只能在本机或受信网络这么用。**
+
+### 配置检查清单
+
+配好后对照这几条，能避开绝大多数坑：
+
+| 检查项 | 说明 |
+|---|---|
+| `api_key_env` 指向的变量**真的设了吗** | 没设的话网关会**拒绝启动**并明确告诉你（这是刻意的，避免把网关 key 误发给上游） |
+| `base_url` 要不要带 `/v1` | 看上游文档。网关**原样拼接**路径，不做猜测 |
+| 本地上游（vLLM/Ollama） | 需要 `transparent: true`（或在该上游不配 key 时由环境变量简写模式处理），且确保 `NO_PROXY` 含 `127.0.0.1` |
+| 浏览器前端直连 | 需要开 `cors` |
+| 对外开放 | 必须配 `client_keys`，否则网关完全开放（启动日志会警告） |
 
 ## 接入工作台
 

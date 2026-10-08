@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -183,7 +184,7 @@ dashboard_key_env: DASH_KEY
 cors:
   enabled: true
   allowed_origins: ["https://bench.example", "*"]
-upstreams: [{name: a, base_url: "https://a.example"}]
+upstreams: [{name: a, base_url: "https://a.example", transparent: true}]
 `)
 	s, err := Load(p)
 	if err != nil {
@@ -207,5 +208,58 @@ func TestCORSOriginsFromEnv(t *testing.T) {
 	}
 	if !s.CORS.Enabled || len(s.CORS.AllowedOrigins) != 2 {
 		t.Errorf("CORS from env wrong: %+v", s.CORS)
+	}
+}
+
+// A named but unset api_key_env must fail startup rather than silently falling
+// back to forwarding the client's gateway key to the provider.
+func TestUnsetAPIKeyEnvFailsStartup(t *testing.T) {
+	t.Setenv("DEFINITELY_NOT_SET_12345", "")
+
+	p := write(t, "gateway.yaml", `
+upstreams:
+  - name: prov
+    base_url: https://api.example.com
+    api_key_env: DEFINITELY_NOT_SET_12345
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("Load succeeded with an unset api_key_env; want a startup error")
+	}
+	if !strings.Contains(err.Error(), "DEFINITELY_NOT_SET_12345") {
+		t.Errorf("error should name the offending variable, got: %v", err)
+	}
+}
+
+// An upstream with no credential and no explicit intent is refused, so a typo
+// cannot quietly produce a gateway that leaks client keys upstream.
+func TestUpstreamWithoutCredentialIsRejected(t *testing.T) {
+	p := write(t, "gateway.yaml", `
+upstreams:
+  - name: prov
+    base_url: https://api.example.com
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("Load succeeded with no credential and no transparent flag; want an error")
+	}
+}
+
+// Transparent mode is an explicit opt-in and is recorded as such.
+func TestTransparentModeIsExplicit(t *testing.T) {
+	p := write(t, "gateway.yaml", `
+upstreams:
+  - name: prov
+    base_url: https://api.example.com
+    transparent: true
+`)
+	s, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.Upstreams) != 1 || !s.Upstreams[0].Transparent {
+		t.Errorf("transparent flag not carried through: %+v", s.Upstreams)
+	}
+	if s.Upstreams[0].APIKey != "" {
+		t.Errorf("transparent upstream should carry no key, got %q", s.Upstreams[0].APIKey)
 	}
 }

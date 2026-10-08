@@ -45,11 +45,24 @@ func newGateway(t *testing.T, upstreamKey string) *testGateway {
 
 func newGatewayWith(t *testing.T, upstreamKey string, clients []router.Client) *testGateway {
 	t.Helper()
+	return buildGateway(t, router.Upstream{Name: "test-up", APIKey: upstreamKey}, clients)
+}
+
+// newTransparentGateway builds a gateway whose upstream explicitly forwards the
+// caller's own credential.
+func newTransparentGateway(t *testing.T) *testGateway {
+	t.Helper()
+	return buildGateway(t, router.Upstream{Name: "test-up", Transparent: true},
+		[]router.Client{{Name: "tester", Key: "gw-key"}})
+}
+
+func buildGateway(t *testing.T, spec router.Upstream, clients []router.Client) *testGateway {
+	t.Helper()
 
 	var mu sync.Mutex
 	calls := &[]capturedRequest{}
 
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		*calls = append(*calls, capturedRequest{
@@ -62,9 +75,8 @@ func newGatewayWith(t *testing.T, upstreamKey string, clients []router.Client) *
 		_, _ = io.WriteString(w, `{"model":"m","usage":{"prompt_tokens":11,"completion_tokens":5,"total_tokens":16}}`)
 	}))
 
-	rtr, err := router.New(
-		[]router.Upstream{{Name: "test-up", BaseURL: up.URL, APIKey: upstreamKey}},
-		clients, "test-up", "")
+	spec.BaseURL = upstream.URL
+	rtr, err := router.New([]router.Upstream{spec}, clients, "test-up", "")
 	if err != nil {
 		t.Fatalf("router.New: %v", err)
 	}
@@ -76,9 +88,9 @@ func newGatewayWith(t *testing.T, upstreamKey string, clients []router.Client) *
 	engine.NoRoute(handler.Handle)
 
 	gw := httptest.NewServer(engine)
-	t.Cleanup(func() { gw.Close(); up.Close() })
+	t.Cleanup(func() { gw.Close(); upstream.Close() })
 
-	return &testGateway{server: gw, store: store, up: up, upCalls: calls}
+	return &testGateway{server: gw, store: store, up: upstream, upCalls: calls}
 }
 
 func (g *testGateway) calls() []capturedRequest {
@@ -165,9 +177,10 @@ func TestUpstreamKeySubstituted(t *testing.T) {
 	}
 }
 
-// Transparent mode: an upstream with no configured key forwards the client's.
+// Transparent mode is an explicit opt-in: only then is the client's own
+// Authorization forwarded upstream.
 func TestTransparentModeForwardsClientKey(t *testing.T) {
-	g := newGateway(t, "") // no upstream key configured
+	g := newTransparentGateway(t)
 
 	resp := g.post(t, `{"model":"m","messages":[]}`)
 	_, _ = io.Copy(io.Discard, resp.Body)
@@ -176,6 +189,22 @@ func TestTransparentModeForwardsClientKey(t *testing.T) {
 	waitFor(t, g.store, func(s stats.Snapshot) bool { return s.Requests == 1 })
 	if got := g.calls()[0].Auth; got != "Bearer gw-key" {
 		t.Errorf("Authorization = %q, want the client's own key in transparent mode", got)
+	}
+}
+
+// Without the explicit flag, an upstream with no key must NOT receive the
+// client's gateway key: that would leak fleet credentials to a third party.
+func TestMissingUpstreamKeyDoesNotLeakClientKey(t *testing.T) {
+	g := newGateway(t, "") // no upstream key, and transparent is not set
+
+	resp := g.post(t, `{"model":"m","messages":[]}`)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	waitFor(t, g.store, func(s stats.Snapshot) bool { return s.Requests == 1 })
+	got := g.calls()[0].Auth
+	if strings.Contains(got, "gw-key") {
+		t.Errorf("SEVERE: gateway key leaked upstream without a transparent opt-in: %q", got)
 	}
 }
 

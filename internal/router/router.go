@@ -19,6 +19,11 @@ type Upstream struct {
 	BaseURL string
 	APIKey  string
 
+	// Transparent forwards the client's own Authorization header instead of
+	// substituting APIKey. Only set when the operator asked for it explicitly;
+	// the config layer never infers it from a missing credential.
+	Transparent bool
+
 	base *url.URL
 }
 
